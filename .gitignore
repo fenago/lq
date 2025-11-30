@@ -99,8 +99,9 @@ tokens/
 *.sqlite
 *.sqlite3
 *.db
-*.sql
 *.dump
+# Allow migration SQL files
+!migrations/*.sql
 
 # Backup files
 *.backup

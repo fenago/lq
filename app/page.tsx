@@ -3,6 +3,7 @@ import Header from "@/components/Header";
 import HeroLiquidBooks from "@/components/HeroLiquidBooks";
 import ProblemLiquidBooks from "@/components/ProblemLiquidBooks";
 import BenefitsSection from "@/components/BenefitsSection";
+import AdvancedFeaturesSection from "@/components/AdvancedFeaturesSection";
 import FeaturesLiquidBooks from "@/components/FeaturesLiquidBooks";
 import HowItWorks from "@/components/HowItWorks";
 import Pricing from "@/components/Pricing";
@@ -30,6 +31,7 @@ export default function Home(): JSX.Element {
         <HeroLiquidBooks />
         <ProblemLiquidBooks />
         <BenefitsSection />
+        <AdvancedFeaturesSection />
         <FeaturesLiquidBooks />
         <HowItWorks />
         <Pricing />
