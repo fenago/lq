@@ -1,0 +1,184 @@
+"use client";
+
+import { useRef, useState } from "react";
+import type { JSX } from "react";
+
+// <FAQ> component is a lsit of <Item> component
+// Just import the FAQ & add your FAQ content to the const faqList arrayy below.
+
+interface FAQItemProps {
+  question: string;
+  answer: JSX.Element;
+}
+
+const faqList: FAQItemProps[] = [
+  {
+    question: "What is LiquidBooks?",
+    answer: (
+      <div className="space-y-2 leading-relaxed">
+        LiquidBooks is an AI-powered platform for creating beautiful, interactive books.
+        You describe your book and chapters, our AI generates professional content, and you
+        publish instantly to GitHub Pages. LiquidBooks creates rich, interactive documentation
+        that goes far beyond traditional PDFs.
+      </div>
+    ),
+  },
+  {
+    question: "Do I need to know how to code?",
+    answer: (
+      <p>
+        No coding required! LiquidBooks handles all the technical complexity for you.
+        You write in simple Markdown (or let AI write for you), and we handle the build
+        process, hosting, and deployment. If you can write an email, you can create a book.
+      </p>
+    ),
+  },
+  {
+    question: "What AI models can I use for content generation?",
+    answer: (
+      <div className="space-y-2 leading-relaxed">
+        LiquidBooks supports multiple AI providers including Claude (Anthropic), GPT-4 (OpenAI),
+        and Gemini (Google). You can use your own API keys or use our hosted service.
+        Each model has different strengths—Claude excels at long-form technical content,
+        GPT-4 is great for creative writing, and Gemini offers fast generation.
+      </div>
+    ),
+  },
+  {
+    question: "Where are my books hosted?",
+    answer: (
+      <p>
+        Your books are hosted for free on GitHub Pages. When you publish, we create a
+        repository in your GitHub account and deploy automatically. You get a free URL
+        (yourusername.github.io/book-name) and can optionally connect a custom domain.
+        You own all your content—it lives in your GitHub account.
+      </p>
+    ),
+  },
+  {
+    question: "What makes LiquidBooks different from Google Docs or Word?",
+    answer: (
+      <div className="space-y-2 leading-relaxed">
+        Traditional word processors create static documents. LiquidBooks creates
+        interactive web books with executable code blocks, embedded videos, collapsible
+        sections, mathematical equations, and automatic navigation. Plus, your book
+        is instantly published online—no exporting PDFs and uploading to file hosts.
+      </div>
+    ),
+  },
+  {
+    question: "Can I collaborate with my team?",
+    answer: (
+      <p>
+        Yes! Publisher and Enterprise plans include team collaboration. You can invite
+        authors to write chapters, editors to review content, and publishers to manage
+        deployment. Each role has appropriate permissions, and you can track progress
+        across your entire team.
+      </p>
+    ),
+  },
+  {
+    question: "What export formats are supported?",
+    answer: (
+      <div className="space-y-2 leading-relaxed">
+        Besides the interactive web version, you can export to PDF, Microsoft Word,
+        LaTeX (for academic publishing), and JATS XML (for journals). The web version
+        remains the richest experience with all interactive features.
+      </div>
+    ),
+  },
+  {
+    question: "Is there a free tier?",
+    answer: (
+      <p>
+        Yes! You can create and publish books for free with some limitations.
+        The free tier includes up to 3 books, AI content generation with your own API keys,
+        and unlimited GitHub Pages deployments. Upgrade to Author or Publisher plans for
+        more books, team features, and premium export formats.
+      </p>
+    ),
+  },
+];
+
+const FaqItem = ({ item }: { item: FAQItemProps }) => {
+  const accordion = useRef(null);
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <li>
+      <button
+        className="relative flex gap-2 items-center w-full py-5 text-base font-semibold text-left border-t md:text-lg border-base-content/10"
+        onClick={(e) => {
+          e.preventDefault();
+          setIsOpen(!isOpen);
+        }}
+        aria-expanded={isOpen}
+      >
+        <span
+          className={`flex-1 text-base-content ${isOpen ? "text-primary" : ""}`}
+        >
+          {item?.question}
+        </span>
+        <svg
+          className={`flex-shrink-0 w-4 h-4 ml-auto fill-current`}
+          viewBox="0 0 16 16"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <rect
+            y="7"
+            width="16"
+            height="2"
+            rx="1"
+            className={`transform origin-center transition duration-200 ease-out ${
+              isOpen && "rotate-180"
+            }`}
+          />
+          <rect
+            y="7"
+            width="16"
+            height="2"
+            rx="1"
+            className={`transform origin-center rotate-90 transition duration-200 ease-out ${
+              isOpen && "rotate-180 hidden"
+            }`}
+          />
+        </svg>
+      </button>
+
+      <div
+        ref={accordion}
+        className={`transition-all duration-300 ease-in-out opacity-80 overflow-hidden`}
+        style={
+          isOpen
+            ? { maxHeight: accordion?.current?.scrollHeight, opacity: 1 }
+            : { maxHeight: 0, opacity: 0 }
+        }
+      >
+        <div className="pb-5 leading-relaxed">{item?.answer}</div>
+      </div>
+    </li>
+  );
+};
+
+const FAQ = () => {
+  return (
+    <section className="bg-base-200" id="faq">
+      <div className="py-24 px-8 max-w-7xl mx-auto flex flex-col md:flex-row gap-12">
+        <div className="flex flex-col text-left basis-1/2">
+          <p className="inline-block font-semibold text-primary mb-4">FAQ</p>
+          <p className="sm:text-4xl text-3xl font-extrabold text-base-content">
+            Frequently Asked Questions
+          </p>
+        </div>
+
+        <ul className="basis-1/2">
+          {faqList.map((item, i) => (
+            <FaqItem key={i} item={item} />
+          ))}
+        </ul>
+      </div>
+    </section>
+  );
+};
+
+export default FAQ;
