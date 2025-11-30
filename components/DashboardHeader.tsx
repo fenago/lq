@@ -54,6 +54,24 @@ export default function DashboardHeader({ isSuperAdmin = false }: DashboardHeade
               >
                 My Books
               </Link>
+              <Link
+                href="/dashboard/styles"
+                className="px-4 py-2 rounded-lg text-sm font-medium hover:bg-base-200 transition-colors"
+              >
+                Styles
+              </Link>
+              <Link
+                href="/dashboard/psychometrics"
+                className="px-4 py-2 rounded-lg text-sm font-medium hover:bg-base-200 transition-colors"
+              >
+                Psychometrics
+              </Link>
+              <Link
+                href="/dashboard/digital-twin"
+                className="px-4 py-2 rounded-lg text-sm font-medium hover:bg-base-200 transition-colors"
+              >
+                Digital Twin
+              </Link>
               {isSuperAdmin && (
                 <Link
                   href="/admin"
@@ -121,6 +139,27 @@ export default function DashboardHeader({ isSuperAdmin = false }: DashboardHeade
                 onClick={() => setIsMenuOpen(false)}
               >
                 My Books
+              </Link>
+              <Link
+                href="/dashboard/styles"
+                className="px-4 py-2 rounded-lg text-sm font-medium hover:bg-base-200 transition-colors"
+                onClick={() => setIsMenuOpen(false)}
+              >
+                Styles
+              </Link>
+              <Link
+                href="/dashboard/psychometrics"
+                className="px-4 py-2 rounded-lg text-sm font-medium hover:bg-base-200 transition-colors"
+                onClick={() => setIsMenuOpen(false)}
+              >
+                Psychometrics
+              </Link>
+              <Link
+                href="/dashboard/digital-twin"
+                className="px-4 py-2 rounded-lg text-sm font-medium hover:bg-base-200 transition-colors"
+                onClick={() => setIsMenuOpen(false)}
+              >
+                Digital Twin
               </Link>
               {isSuperAdmin && (
                 <Link

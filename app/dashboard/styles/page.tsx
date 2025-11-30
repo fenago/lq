@@ -1,7 +1,14 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { createClient } from "@/libs/supabase";
+import {
+  dbProfileToPsychometric,
+  generateToneProfile,
+  type ToneProfile as DigitalTwinToneProfile,
+} from "@/libs/digital-twin";
 
 // Types based on PRD
 interface ToneConfig {
@@ -1055,13 +1062,91 @@ const copywritingFrameworks = [
   },
 ];
 
+// Helper function to calculate style match score
+function calculateStyleMatch(userTone: DigitalTwinToneProfile, styleTone: ToneConfig): number {
+  // Convert style tone (0-10 scale) to user tone scale (0-100)
+  const styleFormality = styleTone.formality * 10;
+  const styleWarmth = styleTone.warmth * 10;
+  const styleHumor = styleTone.humor * 10;
+  const styleAuthority = styleTone.authority * 10;
+  const styleEmpathy = styleTone.empathy * 10;
+  const styleDirectness = styleTone.directness * 10;
+
+  // Calculate difference for each attribute
+  const formalityDiff = Math.abs(userTone.formality - styleFormality);
+  const warmthDiff = Math.abs(userTone.warmth - styleWarmth);
+  const humorDiff = Math.abs(userTone.humor - styleHumor);
+  const authorityDiff = Math.abs(userTone.authority - styleAuthority);
+  const empathyDiff = Math.abs(userTone.empathy - styleEmpathy);
+  const directnessDiff = Math.abs(userTone.directness - styleDirectness);
+
+  // Calculate average difference (lower is better)
+  const avgDiff = (formalityDiff + warmthDiff + humorDiff + authorityDiff + empathyDiff + directnessDiff) / 6;
+
+  // Convert to a match score (0-100, higher is better)
+  return Math.round(100 - avgDiff);
+}
+
 export default function StylesPage() {
+  const searchParams = useSearchParams();
+  const highlightStyleId = searchParams.get("highlight");
+
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(null);
   const [selectedStyle, setSelectedStyle] = useState<AuthorStyle | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [eraFilter, setEraFilter] = useState<"all" | "classic" | "modern">("all");
   const [showFrameworks, setShowFrameworks] = useState(false);
+  const [showRecommended, setShowRecommended] = useState(false);
+  const [userToneProfile, setUserToneProfile] = useState<DigitalTwinToneProfile | null>(null);
+  const [hasCompletedPsychometrics, setHasCompletedPsychometrics] = useState(false);
+
+  // Load user's psychometric profile and generate tone profile
+  const loadUserToneProfile = useCallback(async () => {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data: profile } = await supabase
+      .from("user_psychometric_profiles")
+      .select("*")
+      .eq("user_id", user.id)
+      .single();
+
+    if (profile && profile.completion_percentage > 0) {
+      const psychometricProfile = dbProfileToPsychometric(profile);
+      const toneProfile = generateToneProfile(psychometricProfile);
+      setUserToneProfile(toneProfile);
+      setHasCompletedPsychometrics(profile.completion_percentage >= 10);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadUserToneProfile();
+  }, [loadUserToneProfile]);
+
+  // Highlight a specific style if requested via URL
+  useEffect(() => {
+    if (highlightStyleId) {
+      const style = authorStyles.find(s => s.id === highlightStyleId);
+      if (style) {
+        setSelectedStyle(style);
+      }
+    }
+  }, [highlightStyleId]);
+
+  // Calculate recommended styles based on user's tone profile
+  const recommendedStyles = useMemo(() => {
+    if (!userToneProfile) return [];
+
+    return authorStyles
+      .map(style => ({
+        ...style,
+        matchScore: calculateStyleMatch(userToneProfile, style.tone),
+      }))
+      .sort((a, b) => b.matchScore - a.matchScore)
+      .slice(0, 8);
+  }, [userToneProfile]);
 
   // Filter styles based on selections
   const filteredStyles = useMemo(() => {
@@ -1106,6 +1191,17 @@ export default function StylesPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          {hasCompletedPsychometrics && (
+            <button
+              onClick={() => setShowRecommended(!showRecommended)}
+              className={`btn ${showRecommended ? "btn-accent" : "btn-ghost"}`}
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+              </svg>
+              Recommended For You
+            </button>
+          )}
           <button
             onClick={() => setShowFrameworks(!showFrameworks)}
             className={`btn ${showFrameworks ? "btn-secondary" : "btn-ghost"}`}
@@ -1115,6 +1211,12 @@ export default function StylesPage() {
             </svg>
             Copywriting Frameworks
           </button>
+          <Link href="/dashboard/digital-twin" className="btn btn-ghost">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Digital Twin
+          </Link>
           <Link href="/dashboard" className="btn btn-primary">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -1151,6 +1253,87 @@ export default function StylesPage() {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Recommended Styles Section */}
+      {showRecommended && recommendedStyles.length > 0 && (
+        <div className="mb-8 bg-gradient-to-r from-accent/10 to-primary/10 rounded-xl shadow-lg border border-accent/30 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <svg className="w-6 h-6 text-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                </svg>
+                Recommended For Your Voice
+              </h2>
+              <p className="text-sm text-base-content/60">Styles that match your psychometric profile</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Link href="/dashboard/digital-twin" className="btn btn-ghost btn-sm">
+                View Your Profile
+              </Link>
+              <button onClick={() => setShowRecommended(false)} className="btn btn-ghost btn-sm">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {recommendedStyles.map((style) => (
+              <div
+                key={style.id}
+                onClick={() => setSelectedStyle(style)}
+                className="bg-base-100 rounded-lg p-4 cursor-pointer hover:shadow-lg hover:border-accent transition-all border border-base-200"
+              >
+                <div className="flex items-start justify-between mb-2">
+                  <div>
+                    <h3 className="font-bold text-sm">{style.name}</h3>
+                    <p className="text-xs text-base-content/60">{style.author}</p>
+                  </div>
+                  <div className="badge badge-accent badge-sm">{style.matchScore}% match</div>
+                </div>
+                <p className="text-xs text-base-content/70 line-clamp-2 mb-2">{style.description}</p>
+                <div className="flex gap-2 text-xs">
+                  <span className="opacity-60">Tone:</span>
+                  <span>{style.tone.primary}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 p-3 bg-base-100 rounded-lg">
+            <p className="text-xs text-base-content/60">
+              <strong>How this works:</strong> We compare your Digital Twin&apos;s tone profile (formality, warmth, humor, authority, empathy, directness)
+              with each author style to find the best matches. Higher percentages indicate closer alignment with your natural voice.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Digital Twin CTA for users without psychometrics */}
+      {!hasCompletedPsychometrics && (
+        <div className="mb-8 bg-gradient-to-r from-primary/10 to-secondary/10 rounded-xl p-6 border border-primary/20">
+          <div className="flex items-center gap-6">
+            <div className="w-16 h-16 bg-primary/20 rounded-xl flex items-center justify-center shrink-0">
+              <svg className="w-8 h-8 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div className="flex-1">
+              <h3 className="font-bold mb-1">Get Personalized Style Recommendations</h3>
+              <p className="text-sm text-base-content/70">
+                Complete your psychometric assessments to discover which author styles match your natural voice.
+                We&apos;ll analyze your tone profile and recommend styles that align with how you think and write.
+              </p>
+            </div>
+            <Link href="/dashboard/psychometrics" className="btn btn-primary">
+              Start Assessments
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+              </svg>
+            </Link>
           </div>
         </div>
       )}
@@ -1375,7 +1558,7 @@ export default function StylesPage() {
                   {/* Actions */}
                   <div className="flex gap-3 pt-4 border-t border-base-200">
                     <Link
-                      href={`/dashboard?style=${selectedStyle.id}`}
+                      href={`/dashboard?style=${selectedStyle.id}&style_name=${encodeURIComponent(selectedStyle.name)}&style_author=${encodeURIComponent(selectedStyle.author)}`}
                       className="btn btn-primary flex-1"
                     >
                       Use This Style

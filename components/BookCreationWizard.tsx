@@ -1,6 +1,28 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
+import Link from "next/link";
+import { createClient } from "@/libs/supabase";
+import {
+  createDigitalTwin,
+  dbProfileToPsychometric,
+  type DigitalTwin,
+} from "@/libs/digital-twin";
+import {
+  type AuthorStyle,
+  generateAuthorStylePrompt,
+} from "@/libs/author-styles";
+
+// Writing source type
+type WritingSource = "none" | "digital-twin" | "author-style";
+
+interface WritingSourceConfig {
+  source: WritingSource;
+  digitalTwin?: DigitalTwin;
+  authorStyleId?: string;
+  authorStyleName?: string;
+}
 
 // Types for the wizard
 interface Chapter {
@@ -606,6 +628,80 @@ export default function BookCreationWizard() {
   // README regeneration
   const [isUpdatingReadme, setIsUpdatingReadme] = useState(false);
   const [readmeUpdateResult, setReadmeUpdateResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  // Writing Source State (Digital Twin or Author Style)
+  const searchParams = useSearchParams();
+  const [writingSourceConfig, setWritingSourceConfig] = useState<WritingSourceConfig>({
+    source: "none",
+  });
+  const [userDigitalTwin, setUserDigitalTwin] = useState<DigitalTwin | null>(null);
+  const [isLoadingTwin, setIsLoadingTwin] = useState(false);
+  const [hasCompletedPsychometrics, setHasCompletedPsychometrics] = useState(false);
+  const [selectedAuthorStyleId, setSelectedAuthorStyleId] = useState<string | null>(null);
+
+  // Load user's Digital Twin
+  const loadDigitalTwin = useCallback(async () => {
+    setIsLoadingTwin(true);
+    try {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setIsLoadingTwin(false);
+        return;
+      }
+
+      const { data: profile } = await supabase
+        .from("user_psychometric_profiles")
+        .select("*")
+        .eq("user_id", user.id)
+        .single();
+
+      if (profile) {
+        const psychometricProfile = dbProfileToPsychometric(profile);
+        const completionPercentage = profile.completion_percentage || 0;
+        setHasCompletedPsychometrics(completionPercentage >= 50);
+
+        if (completionPercentage >= 50) {
+          const twin = createDigitalTwin(user.id, psychometricProfile, completionPercentage);
+          setUserDigitalTwin(twin);
+        }
+      }
+    } catch (err) {
+      console.error("Error loading digital twin:", err);
+    } finally {
+      setIsLoadingTwin(false);
+    }
+  }, []);
+
+  // Load digital twin on mount and handle URL params
+  useEffect(() => {
+    loadDigitalTwin();
+  }, [loadDigitalTwin]);
+
+  // Handle URL params for pre-selected style or digital twin
+  useEffect(() => {
+    const styleParam = searchParams.get("style");
+    const styleNameParam = searchParams.get("style_name");
+    const styleAuthorParam = searchParams.get("style_author");
+    const useTwinParam = searchParams.get("use_twin");
+
+    if (useTwinParam === "true" && userDigitalTwin) {
+      setWritingSourceConfig({
+        source: "digital-twin",
+        digitalTwin: userDigitalTwin,
+      });
+    } else if (styleParam) {
+      setSelectedAuthorStyleId(styleParam);
+      const styleName = styleNameParam
+        ? `${styleNameParam}${styleAuthorParam ? ` by ${styleAuthorParam}` : ""}`
+        : undefined;
+      setWritingSourceConfig({
+        source: "author-style",
+        authorStyleId: styleParam,
+        authorStyleName: styleName,
+      });
+    }
+  }, [searchParams, userDigitalTwin]);
 
   // Convert MyST-like markdown to basic HTML for preview
   const mystToHtml = (content: string): string => {
@@ -1317,6 +1413,141 @@ export default function BookCreationWizard() {
             onChange={(e) => setBookConfig((prev) => ({ ...prev, description: e.target.value }))}
           />
         </div>
+      </div>
+
+      {/* Writing Style Selection */}
+      <div className="divider">Writing Style (Optional)</div>
+
+      <div className="bg-base-200 rounded-lg p-6">
+        <div className="text-center mb-4">
+          <h4 className="font-semibold mb-2">Choose Your Writing Voice</h4>
+          <p className="text-sm text-base-content/70">
+            AI can write content using your personal voice (Digital Twin) or a famous author&apos;s style
+          </p>
+        </div>
+
+        <div className="grid md:grid-cols-3 gap-4">
+          {/* No Style Option */}
+          <div
+            className={`card bg-base-100 cursor-pointer transition-all hover:shadow-md ${
+              writingSourceConfig.source === "none" ? "ring-2 ring-primary" : ""
+            }`}
+            onClick={() => setWritingSourceConfig({ source: "none" })}
+          >
+            <div className="card-body items-center text-center p-4">
+              <svg className="w-8 h-8 text-base-content/50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+              </svg>
+              <h5 className="font-medium">Default Style</h5>
+              <p className="text-xs text-base-content/60">Standard technical writing</p>
+            </div>
+          </div>
+
+          {/* Digital Twin Option */}
+          <div
+            className={`card bg-base-100 cursor-pointer transition-all hover:shadow-md ${
+              writingSourceConfig.source === "digital-twin" ? "ring-2 ring-primary" : ""
+            } ${!hasCompletedPsychometrics ? "opacity-60" : ""}`}
+            onClick={() => {
+              if (hasCompletedPsychometrics && userDigitalTwin) {
+                setWritingSourceConfig({
+                  source: "digital-twin",
+                  digitalTwin: userDigitalTwin,
+                });
+              }
+            }}
+          >
+            <div className="card-body items-center text-center p-4">
+              {isLoadingTwin ? (
+                <span className="loading loading-spinner loading-md"></span>
+              ) : (
+                <svg className="w-8 h-8 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+              )}
+              <h5 className="font-medium">Digital Twin</h5>
+              {hasCompletedPsychometrics ? (
+                <p className="text-xs text-base-content/60">Write in your personal voice</p>
+              ) : (
+                <div className="text-xs">
+                  <p className="text-warning mb-1">Complete psychometrics first</p>
+                  <Link href="/dashboard/psychometrics" className="link link-primary">
+                    Take Assessment →
+                  </Link>
+                </div>
+              )}
+              {writingSourceConfig.source === "digital-twin" && userDigitalTwin && (
+                <div className="badge badge-primary badge-sm mt-1">
+                  {userDigitalTwin.completionPercentage}% profile
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Author Style Option */}
+          <div
+            className={`card bg-base-100 cursor-pointer transition-all hover:shadow-md ${
+              writingSourceConfig.source === "author-style" ? "ring-2 ring-primary" : ""
+            }`}
+            onClick={() => {
+              if (!writingSourceConfig.authorStyleId) {
+                // Navigate to styles page to select one
+                window.location.href = "/dashboard/styles?select=true";
+              }
+            }}
+          >
+            <div className="card-body items-center text-center p-4">
+              <svg className="w-8 h-8 text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+              </svg>
+              <h5 className="font-medium">Author Style</h5>
+              {writingSourceConfig.authorStyleId ? (
+                <p className="text-xs text-base-content/60">
+                  {writingSourceConfig.authorStyleName || "Style selected"}
+                </p>
+              ) : (
+                <Link href="/dashboard/styles?select=true" className="text-xs link link-primary">
+                  Browse 100+ styles →
+                </Link>
+              )}
+              {writingSourceConfig.source === "author-style" && writingSourceConfig.authorStyleId && (
+                <button
+                  className="btn btn-ghost btn-xs mt-1"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setWritingSourceConfig({ source: "none" });
+                    setSelectedAuthorStyleId(null);
+                  }}
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Selected style indicator */}
+        {writingSourceConfig.source !== "none" && (
+          <div className="mt-4 flex items-center justify-center gap-2 text-sm">
+            <div className="badge badge-outline">
+              {writingSourceConfig.source === "digital-twin" ? (
+                <>
+                  <svg className="w-3 h-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  Using Your Digital Twin
+                </>
+              ) : (
+                <>
+                  <svg className="w-3 h-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  Using {writingSourceConfig.authorStyleName || "Author Style"}
+                </>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="divider">Chapter Creation</div>
@@ -2549,6 +2780,36 @@ export default function BookCreationWizard() {
     }
   };
 
+  // Build writing style config for API
+  const buildWritingStyleForApi = () => {
+    if (writingSourceConfig.source === "none") {
+      return undefined;
+    }
+
+    if (writingSourceConfig.source === "digital-twin" && writingSourceConfig.digitalTwin) {
+      return {
+        type: "digital-twin" as const,
+        systemPrompt: writingSourceConfig.digitalTwin.systemPrompt,
+        styleName: "Your Digital Twin",
+      };
+    }
+
+    // For author style, we'd need the full style object to generate the prompt
+    // This will be passed when selecting from the styles page
+    if (writingSourceConfig.source === "author-style" && writingSourceConfig.authorStyleId) {
+      // The authorStylePrompt should have been set when selecting the style
+      return {
+        type: "author-style" as const,
+        systemPrompt: writingSourceConfig.authorStyleName
+          ? `Write in the distinctive style of ${writingSourceConfig.authorStyleName}. Emulate their voice, tone, and approach to explaining concepts while maintaining educational value.`
+          : undefined,
+        styleName: writingSourceConfig.authorStyleName,
+      };
+    }
+
+    return undefined;
+  };
+
   // Handler functions for content generation
   const handleGenerateFullBook = async () => {
     setIsGeneratingContent(true);
@@ -2563,6 +2824,7 @@ export default function BookCreationWizard() {
           features,
           aiConfig,
           targetWordCount: bookConfig.targetWordCount,
+          writingStyle: buildWritingStyleForApi(),
         }),
       });
 
@@ -2603,6 +2865,7 @@ export default function BookCreationWizard() {
           features,
           aiConfig,
           targetWordCount: chapter.targetWordCount,
+          writingStyle: buildWritingStyleForApi(),
         }),
       });
 

@@ -140,7 +140,9 @@ export default function LandingPage2() {
               Follow the wizard to describe your book, select features, and deploy to
               GitHub Pages
             </p>
-            <BookCreationWizard />
+            <Suspense fallback={<div className="flex justify-center py-12"><span className="loading loading-spinner loading-lg"></span></div>}>
+              <BookCreationWizard />
+            </Suspense>
           </div>
         </section>
 

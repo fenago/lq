@@ -79,6 +79,12 @@ interface AIConfig {
   apiKey?: string;
 }
 
+interface WritingStyleConfig {
+  type: "none" | "digital-twin" | "author-style";
+  systemPrompt?: string;
+  styleName?: string;
+}
+
 interface GenerateContentRequest {
   mode: "full" | "chapter";
   bookConfig: BookConfig;
@@ -87,6 +93,7 @@ interface GenerateContentRequest {
   targetWordCount?: number;
   chapterIndex?: number;
   chapterInstructions?: string;
+  writingStyle?: WritingStyleConfig;
 }
 
 // Get enabled features list for prompt
@@ -360,13 +367,29 @@ async function generateChapterContent(
   chapterIndex: number,
   features: MystFeatures,
   aiConfig: AIConfig,
-  instructions?: string
+  instructions?: string,
+  writingStyle?: WritingStyleConfig
 ): Promise<string> {
   const enabledFeatures = getEnabledFeatures(features);
   const syntaxExamples = getMystSyntaxExamples(features);
   const wordTarget = chapter.targetWordCount || 3000;
 
+  // Build the writing style instruction section
+  let writingStyleSection = "";
+  if (writingStyle && writingStyle.type !== "none" && writingStyle.systemPrompt) {
+    writingStyleSection = `
+WRITING STYLE INSTRUCTIONS:
+${writingStyle.styleName ? `You are writing in the style of: ${writingStyle.styleName}` : ""}
+
+${writingStyle.systemPrompt}
+
+IMPORTANT: While following the writing style above, you must still use MyST Markdown syntax for formatting. The style applies to your voice, tone, and approach to explaining concepts, NOT to the formatting syntax.
+
+`;
+  }
+
   const prompt = `You are an expert technical writer creating content for an interactive eBook using MyST Markdown syntax.
+${writingStyleSection}
 
 BOOK CONTEXT:
 - Title: ${bookConfig.title}
@@ -442,6 +465,7 @@ export async function POST(request: NextRequest) {
       aiConfig,
       chapterIndex,
       chapterInstructions,
+      writingStyle,
     } = body;
 
     if (mode === "chapter") {
@@ -467,7 +491,8 @@ export async function POST(request: NextRequest) {
         chapterIndex,
         features,
         aiConfig,
-        chapterInstructions
+        chapterInstructions,
+        writingStyle
       );
 
       return NextResponse.json({ content });
@@ -482,7 +507,9 @@ export async function POST(request: NextRequest) {
           chapter,
           i,
           features,
-          aiConfig
+          aiConfig,
+          undefined,
+          writingStyle
         );
         chapters.push({ content });
       }

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { createClient } from "@/libs/supabase";
 
 // Types for psychometric categories based on PRD
 interface AssessmentCategory {
@@ -24,6 +25,7 @@ interface AssessmentQuestion {
 
 interface UserProfile {
   id: string;
+  user_id: string;
   completionPercentage: number;
   categories: {
     [categoryId: string]: {
@@ -34,23 +36,85 @@ interface UserProfile {
   };
 }
 
+// Map category IDs to their database column names
+const categoryToDbField: Record<string, string> = {
+  big_five: "big_five",
+  cognitive_style: "cognitive_style",
+  emotional_intelligence: "emotional_intelligence",
+  disc: "disc_profile",
+  values: "values_motivations",
+  via_strengths: "character_strengths",
+  enneagram: "enneagram",
+  creativity: "creativity_profile",
+  thinking_style: "thinking_style",
+  writing_preferences: "writing_preferences",
+  liwc_metrics: "liwc_metrics",
+  reasoning_patterns: "reasoning_patterns",
+  life_experience: "life_experience",
+  intellectual_influences: "intellectual_influences",
+  emotional_landscape: "emotional_landscape",
+  relationship_patterns: "relationship_patterns",
+  worldview_beliefs: "worldview_beliefs",
+  sensory_aesthetic: "sensory_aesthetic",
+  humor_play: "humor_play",
+  communication_quirks: "communication_quirks",
+  creative_process: "creative_process",
+  sample_writing: "writing_analysis",
+};
+
 // Assessment categories from PRD (299 data points across 22 categories)
+// Questionnaire: 164 data points | Conversation: 112 data points | Automated: 23 data points = 299 Total
 const assessmentCategories: AssessmentCategory[] = [
-  // Questionnaire-based (164 data points)
+  // Questionnaire-based (164 data points: 35+12+15+8+12+27+6+8+10+25+6)
   {
     id: "big_five",
     name: "Big Five Personality (OCEAN)",
-    dataPoints: 30,
+    dataPoints: 35,
     timeEstimate: "5-7 min",
     method: "questionnaire",
-    description: "The most scientifically validated personality model. Measures Openness, Conscientiousness, Extraversion, Agreeableness, and Neuroticism with 6 facets each.",
+    description: "The most scientifically validated personality model. Measures Openness, Conscientiousness, Extraversion, Agreeableness, and Neuroticism with 6 facets each plus interaction styles.",
     icon: "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z",
     questions: [
+      // Openness (7 questions)
       { id: "ocean_1", text: "I have a vivid imagination", type: "scale" },
       { id: "ocean_2", text: "I am deeply moved by art and beauty", type: "scale" },
-      { id: "ocean_3", text: "I keep things organized", type: "scale" },
-      { id: "ocean_4", text: "I feel comfortable around people", type: "scale" },
-      { id: "ocean_5", text: "I am helpful to others", type: "scale" },
+      { id: "ocean_3", text: "I enjoy thinking about abstract concepts", type: "scale" },
+      { id: "ocean_4", text: "I prefer variety over routine", type: "scale" },
+      { id: "ocean_5", text: "I am curious about many different things", type: "scale" },
+      { id: "ocean_6", text: "I enjoy trying new and unfamiliar experiences", type: "scale" },
+      { id: "ocean_7", text: "I appreciate unconventional ideas", type: "scale" },
+      // Conscientiousness (7 questions)
+      { id: "ocean_8", text: "I keep things organized", type: "scale" },
+      { id: "ocean_9", text: "I am always prepared", type: "scale" },
+      { id: "ocean_10", text: "I pay attention to details", type: "scale" },
+      { id: "ocean_11", text: "I follow through on my commitments", type: "scale" },
+      { id: "ocean_12", text: "I work hard to achieve my goals", type: "scale" },
+      { id: "ocean_13", text: "I think before I act", type: "scale" },
+      { id: "ocean_14", text: "I like to plan ahead", type: "scale" },
+      // Extraversion (7 questions)
+      { id: "ocean_15", text: "I feel comfortable around people", type: "scale" },
+      { id: "ocean_16", text: "I start conversations with strangers", type: "scale" },
+      { id: "ocean_17", text: "I enjoy being the center of attention", type: "scale" },
+      { id: "ocean_18", text: "I feel energized after social gatherings", type: "scale" },
+      { id: "ocean_19", text: "I have a wide circle of friends", type: "scale" },
+      { id: "ocean_20", text: "I am talkative", type: "scale" },
+      { id: "ocean_21", text: "I prefer group activities over solitary ones", type: "scale" },
+      // Agreeableness (7 questions)
+      { id: "ocean_22", text: "I am helpful to others", type: "scale" },
+      { id: "ocean_23", text: "I trust others easily", type: "scale" },
+      { id: "ocean_24", text: "I sympathize with others' feelings", type: "scale" },
+      { id: "ocean_25", text: "I try to avoid conflict", type: "scale" },
+      { id: "ocean_26", text: "I am willing to compromise", type: "scale" },
+      { id: "ocean_27", text: "I consider others' needs before my own", type: "scale" },
+      { id: "ocean_28", text: "I believe the best in people", type: "scale" },
+      // Neuroticism (7 questions)
+      { id: "ocean_29", text: "I get stressed easily", type: "scale" },
+      { id: "ocean_30", text: "I worry about things", type: "scale" },
+      { id: "ocean_31", text: "My mood changes frequently", type: "scale" },
+      { id: "ocean_32", text: "I get upset easily", type: "scale" },
+      { id: "ocean_33", text: "I often feel anxious", type: "scale" },
+      { id: "ocean_34", text: "I dwell on past mistakes", type: "scale" },
+      { id: "ocean_35", text: "I feel overwhelmed by emotions", type: "scale" },
     ],
   },
   {
@@ -65,6 +129,15 @@ const assessmentCategories: AssessmentCategory[] = [
       { id: "cog_1", text: "When learning something new, I prefer diagrams over written explanations", type: "scale" },
       { id: "cog_2", text: "I trust my gut feelings more than logical analysis", type: "scale" },
       { id: "cog_3", text: "I like to understand the big picture before details", type: "scale" },
+      { id: "cog_4", text: "I prefer to learn by doing rather than reading instructions", type: "scale" },
+      { id: "cog_5", text: "I remember things better when I see them written down", type: "scale" },
+      { id: "cog_6", text: "I need to understand why something works before I can use it", type: "scale" },
+      { id: "cog_7", text: "I prefer structured information over free-form content", type: "scale" },
+      { id: "cog_8", text: "I often see connections that others miss", type: "scale" },
+      { id: "cog_9", text: "I prefer to focus on one thing at a time rather than multitask", type: "scale" },
+      { id: "cog_10", text: "I need quiet to concentrate effectively", type: "scale" },
+      { id: "cog_11", text: "I learn best from concrete examples rather than abstract theories", type: "scale" },
+      { id: "cog_12", text: "I often think in metaphors and analogies", type: "scale" },
     ],
   },
   {
@@ -79,6 +152,18 @@ const assessmentCategories: AssessmentCategory[] = [
       { id: "eq_1", text: "I can usually tell how others are feeling by their expression", type: "scale" },
       { id: "eq_2", text: "I am good at managing my emotions under stress", type: "scale" },
       { id: "eq_3", text: "I find it easy to put my feelings into words", type: "scale" },
+      { id: "eq_4", text: "I am aware of my emotional reactions as they happen", type: "scale" },
+      { id: "eq_5", text: "I can calm myself down when I feel angry or frustrated", type: "scale" },
+      { id: "eq_6", text: "I pick up on the emotional undercurrents in a group", type: "scale" },
+      { id: "eq_7", text: "I can motivate myself even when I don't feel like it", type: "scale" },
+      { id: "eq_8", text: "I understand why I react emotionally to certain situations", type: "scale" },
+      { id: "eq_9", text: "I can sense when someone is upset even if they don't say anything", type: "scale" },
+      { id: "eq_10", text: "I can express my emotions appropriately in different situations", type: "scale" },
+      { id: "eq_11", text: "I use my emotions to guide my decision-making", type: "scale" },
+      { id: "eq_12", text: "I can help others feel better when they're upset", type: "scale" },
+      { id: "eq_13", text: "I recognize how my feelings affect my performance", type: "scale" },
+      { id: "eq_14", text: "I can read between the lines in conversations", type: "scale" },
+      { id: "eq_15", text: "I adapt my communication style based on others' emotional states", type: "scale" },
     ],
   },
   {
@@ -90,10 +175,18 @@ const assessmentCategories: AssessmentCategory[] = [
     description: "Your dominant communication style: Dominance, Influence, Steadiness, or Conscientiousness. Determines how directly and expressively you write.",
     icon: "M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z",
     questions: [
+      // Dominance
       { id: "disc_1", text: "I prefer to get straight to the point in conversations", type: "scale" },
-      { id: "disc_2", text: "I enjoy inspiring and motivating others", type: "scale" },
-      { id: "disc_3", text: "I value stability and consistency", type: "scale" },
-      { id: "disc_4", text: "I focus on accuracy and quality in my work", type: "scale" },
+      { id: "disc_2", text: "I am comfortable taking charge in group situations", type: "scale" },
+      // Influence
+      { id: "disc_3", text: "I enjoy inspiring and motivating others", type: "scale" },
+      { id: "disc_4", text: "I am enthusiastic and optimistic in my communication", type: "scale" },
+      // Steadiness
+      { id: "disc_5", text: "I value stability and consistency", type: "scale" },
+      { id: "disc_6", text: "I prefer to support others rather than lead", type: "scale" },
+      // Conscientiousness
+      { id: "disc_7", text: "I focus on accuracy and quality in my work", type: "scale" },
+      { id: "disc_8", text: "I prefer to have all the facts before making decisions", type: "scale" },
     ],
   },
   {
@@ -108,16 +201,45 @@ const assessmentCategories: AssessmentCategory[] = [
       { id: "val_1", text: "Achievement and success are very important to me", type: "scale" },
       { id: "val_2", text: "I value being of service to others", type: "scale" },
       { id: "val_3", text: "Personal freedom and independence matter greatly to me", type: "scale" },
+      { id: "val_4", text: "Security and stability are priorities in my life", type: "scale" },
+      { id: "val_5", text: "I seek novelty and excitement", type: "scale" },
+      { id: "val_6", text: "Following traditions and customs is important to me", type: "scale" },
+      { id: "val_7", text: "I value having power and influence over others", type: "scale" },
+      { id: "val_8", text: "Protecting nature and the environment matters to me", type: "scale" },
+      { id: "val_9", text: "I believe in equality and justice for all", type: "scale" },
+      { id: "val_10", text: "Pleasure and enjoyment are important life goals", type: "scale" },
+      { id: "val_11", text: "I value conforming to social norms and expectations", type: "scale" },
+      { id: "val_12", text: "Creativity and self-expression are core to who I am", type: "scale" },
     ],
   },
   {
     id: "via_strengths",
     name: "Character Strengths (VIA)",
-    dataPoints: 24,
+    dataPoints: 27,
     timeEstimate: "4-5 min",
     method: "questionnaire",
     description: "Your signature character strengths from the VIA Classification. Includes creativity, curiosity, love of learning, perspective, bravery, honesty, kindness, and more.",
     icon: "M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z",
+    questions: [
+      { id: "via_1", text: "I regularly come up with new ideas and ways of doing things", type: "scale" },
+      { id: "via_2", text: "I am always curious and eager to explore new topics", type: "scale" },
+      { id: "via_3", text: "I love learning new skills and knowledge", type: "scale" },
+      { id: "via_4", text: "I can see situations from multiple perspectives", type: "scale" },
+      { id: "via_5", text: "I stand up for what I believe even when it's difficult", type: "scale" },
+      { id: "via_6", text: "I always tell the truth, even when it's uncomfortable", type: "scale" },
+      { id: "via_7", text: "I enjoy doing kind things for others", type: "scale" },
+      { id: "via_8", text: "I work well as part of a team", type: "scale" },
+      { id: "via_9", text: "I treat everyone fairly regardless of who they are", type: "scale" },
+      { id: "via_10", text: "I can forgive people who have wronged me", type: "scale" },
+      { id: "via_11", text: "I am modest about my achievements", type: "scale" },
+      { id: "via_12", text: "I think carefully before making decisions", type: "scale" },
+      { id: "via_13", text: "I can control my impulses and emotions", type: "scale" },
+      { id: "via_14", text: "I notice and appreciate beauty in the world", type: "scale" },
+      { id: "via_15", text: "I feel grateful for what I have", type: "scale" },
+      { id: "via_16", text: "I remain hopeful even in difficult times", type: "scale" },
+      { id: "via_17", text: "I use humor to lighten the mood", type: "scale" },
+      { id: "via_18", text: "I have a sense of meaning and purpose in life", type: "scale" },
+    ],
   },
   {
     id: "enneagram",
@@ -127,6 +249,17 @@ const assessmentCategories: AssessmentCategory[] = [
     method: "questionnaire",
     description: "Your Enneagram type and wing. Reveals your core motivations, fears, and growth paths. Adds depth to character development and narrative themes.",
     icon: "M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z",
+    questions: [
+      { id: "enn_1", text: "I strive for perfection and have high standards", type: "scale" },
+      { id: "enn_2", text: "I naturally focus on helping and supporting others", type: "scale" },
+      { id: "enn_3", text: "Achievement and success are central to my identity", type: "scale" },
+      { id: "enn_4", text: "I often feel different from others and value authenticity deeply", type: "scale" },
+      { id: "enn_5", text: "I need time alone to think and recharge", type: "scale" },
+      { id: "enn_6", text: "I tend to anticipate problems and prepare for worst-case scenarios", type: "scale" },
+      { id: "enn_7", text: "I seek new experiences and avoid pain or boredom", type: "scale" },
+      { id: "enn_8", text: "I am direct and assertive in pursuing what I want", type: "scale" },
+      { id: "enn_9", text: "I prefer harmony and avoiding conflict", type: "scale" },
+    ],
   },
   {
     id: "creativity",
@@ -136,6 +269,16 @@ const assessmentCategories: AssessmentCategory[] = [
     method: "questionnaire",
     description: "Your creative style and preferences. Measures divergent thinking, risk tolerance, and preference for novelty vs. convention.",
     icon: "M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z",
+    questions: [
+      { id: "cre_1", text: "I enjoy generating many different ideas before settling on one", type: "scale" },
+      { id: "cre_2", text: "I am comfortable taking creative risks", type: "scale" },
+      { id: "cre_3", text: "I prefer novel approaches over tried-and-true methods", type: "scale" },
+      { id: "cre_4", text: "I can easily make connections between unrelated concepts", type: "scale" },
+      { id: "cre_5", text: "I enjoy ambiguity and open-ended problems", type: "scale" },
+      { id: "cre_6", text: "I often challenge conventional thinking", type: "scale" },
+      { id: "cre_7", text: "I get excited by unusual or unexpected ideas", type: "scale" },
+      { id: "cre_8", text: "I prefer creating original work to following templates", type: "scale" },
+    ],
   },
   {
     id: "thinking_style",
@@ -145,6 +288,18 @@ const assessmentCategories: AssessmentCategory[] = [
     method: "questionnaire",
     description: "How you approach reasoning and problem-solving. Includes critical thinking, systems thinking, and creative thinking preferences.",
     icon: "M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z",
+    questions: [
+      { id: "think_1", text: "I naturally look for cause-and-effect relationships", type: "scale" },
+      { id: "think_2", text: "I think about how different parts of a system interact", type: "scale" },
+      { id: "think_3", text: "I question assumptions before accepting information", type: "scale" },
+      { id: "think_4", text: "I consider long-term consequences when making decisions", type: "scale" },
+      { id: "think_5", text: "I enjoy finding patterns in complex information", type: "scale" },
+      { id: "think_6", text: "I prefer to analyze all options before deciding", type: "scale" },
+      { id: "think_7", text: "I naturally consider multiple viewpoints on issues", type: "scale" },
+      { id: "think_8", text: "I enjoy solving puzzles and logical problems", type: "scale" },
+      { id: "think_9", text: "I think about underlying principles behind surface events", type: "scale" },
+      { id: "think_10", text: "I evaluate evidence quality before drawing conclusions", type: "scale" },
+    ],
   },
   {
     id: "writing_preferences",
@@ -160,6 +315,21 @@ const assessmentCategories: AssessmentCategory[] = [
       { id: "wp_3", text: "I prefer formal writing to casual writing", type: "scale" },
       { id: "wp_4", text: "I often use metaphors and analogies", type: "scale" },
       { id: "wp_5", text: "I like to address the reader directly", type: "scale" },
+      { id: "wp_6", text: "I enjoy using humor in my writing", type: "scale" },
+      { id: "wp_7", text: "I prefer active voice over passive voice", type: "scale" },
+      { id: "wp_8", text: "I like to include personal anecdotes and stories", type: "scale" },
+      { id: "wp_9", text: "I prefer concrete examples over abstract concepts", type: "scale" },
+      { id: "wp_10", text: "I use bullet points and lists frequently", type: "scale" },
+      { id: "wp_11", text: "I like to ask rhetorical questions", type: "scale" },
+      { id: "wp_12", text: "I prefer comprehensive coverage over brevity", type: "scale" },
+      { id: "wp_13", text: "I use transitional phrases between ideas", type: "scale" },
+      { id: "wp_14", text: "I like to define technical terms when I use them", type: "scale" },
+      { id: "wp_15", text: "I prefer to build arguments gradually", type: "scale" },
+      { id: "wp_16", text: "I enjoy using vivid, descriptive language", type: "scale" },
+      { id: "wp_17", text: "I like to challenge readers with provocative statements", type: "scale" },
+      { id: "wp_18", text: "I prefer writing in first person", type: "scale" },
+      { id: "wp_19", text: "I use headings and subheadings to organize content", type: "scale" },
+      { id: "wp_20", text: "I like to end sections with summaries or key takeaways", type: "scale" },
     ],
   },
   {
@@ -179,12 +349,20 @@ const assessmentCategories: AssessmentCategory[] = [
     method: "questionnaire",
     description: "How you build arguments and reach conclusions. Includes deductive vs inductive reasoning, evidence preferences, and logical style.",
     icon: "M13 10V3L4 14h7v7l9-11h-7z",
+    questions: [
+      { id: "reas_1", text: "I prefer to start with general principles and apply them to specific cases", type: "scale" },
+      { id: "reas_2", text: "I build arguments by accumulating specific evidence first", type: "scale" },
+      { id: "reas_3", text: "I value statistical data over individual case studies", type: "scale" },
+      { id: "reas_4", text: "I consider counterarguments when forming my position", type: "scale" },
+      { id: "reas_5", text: "I prefer logical step-by-step reasoning over intuitive leaps", type: "scale" },
+      { id: "reas_6", text: "I acknowledge uncertainty and limitations in my conclusions", type: "scale" },
+    ],
   },
-  // Conversation-based (135 data points)
+  // Conversation-based (112 data points: 15+12+18+12+15+12+8+10+10)
   {
     id: "life_experience",
     name: "Life Experience & Background",
-    dataPoints: 20,
+    dataPoints: 15,
     timeEstimate: "2 min",
     method: "conversation",
     description: "Your formative experiences, cultural background, and key life events. Provides authentic context for your writing voice.",
@@ -193,7 +371,7 @@ const assessmentCategories: AssessmentCategory[] = [
   {
     id: "intellectual_influences",
     name: "Intellectual Influences",
-    dataPoints: 15,
+    dataPoints: 12,
     timeEstimate: "1.5 min",
     method: "conversation",
     description: "Thinkers, books, and ideas that shaped your worldview. AI will incorporate references and thinking styles from your influences.",
@@ -273,9 +451,10 @@ const assessmentCategories: AssessmentCategory[] = [
   },
 ];
 
-// Demo user profile state
-const demoUserProfile: UserProfile = {
-  id: "demo-user",
+// Initial empty user profile
+const emptyUserProfile: UserProfile = {
+  id: "",
+  user_id: "",
   completionPercentage: 0,
   categories: {},
 };
@@ -285,7 +464,85 @@ export default function PsychometricsPage() {
   const [selectedCategory, setSelectedCategory] = useState<AssessmentCategory | null>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, number>>({});
-  const [userProfile, setUserProfile] = useState<UserProfile>(demoUserProfile);
+  const [userProfile, setUserProfile] = useState<UserProfile>(emptyUserProfile);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+
+  // Load user profile from Supabase
+  const loadUserProfile = useCallback(async () => {
+    const supabase = createClient();
+
+    // Get current user
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      console.error("Error getting user:", userError);
+      setIsLoading(false);
+      return;
+    }
+
+    setUserId(user.id);
+
+    // Try to get existing profile
+    const { data: profile, error: profileError } = await supabase
+      .from("user_psychometric_profiles")
+      .select("*")
+      .eq("user_id", user.id)
+      .single();
+
+    if (profileError && profileError.code !== "PGRST116") {
+      // PGRST116 is "no rows returned" - that's expected for new users
+      console.error("Error loading profile:", profileError);
+    }
+
+    if (profile) {
+      // Build categories object from profile data
+      const categories: UserProfile["categories"] = {};
+
+      // Check each category field for completion
+      for (const [categoryId, dbField] of Object.entries(categoryToDbField)) {
+        const fieldData = profile[dbField];
+        if (fieldData && typeof fieldData === "object" && Object.keys(fieldData).length > 0) {
+          categories[categoryId] = {
+            completed: true,
+            answers: fieldData,
+          };
+        }
+      }
+
+      setUserProfile({
+        id: profile.id,
+        user_id: profile.user_id,
+        completionPercentage: profile.completion_percentage || 0,
+        categories,
+      });
+    } else {
+      // Create a new profile for this user
+      const { data: newProfile, error: createError } = await supabase
+        .from("user_psychometric_profiles")
+        .insert({ user_id: user.id })
+        .select()
+        .single();
+
+      if (createError) {
+        console.error("Error creating profile:", createError);
+      } else if (newProfile) {
+        setUserProfile({
+          id: newProfile.id,
+          user_id: newProfile.user_id,
+          completionPercentage: 0,
+          categories: {},
+        });
+      }
+    }
+
+    setIsLoading(false);
+  }, []);
+
+  // Load profile on mount
+  useEffect(() => {
+    loadUserProfile();
+  }, [loadUserProfile]);
 
   // Calculate total data points
   const totalDataPoints = assessmentCategories.reduce((sum, cat) => sum + cat.dataPoints, 0);
@@ -294,6 +551,9 @@ export default function PsychometricsPage() {
     .reduce((sum, cat) => sum + cat.dataPoints, 0);
   const conversationDataPoints = assessmentCategories
     .filter((c) => c.method === "conversation")
+    .reduce((sum, cat) => sum + cat.dataPoints, 0);
+  const automatedDataPoints = assessmentCategories
+    .filter((c) => c.method === "automated")
     .reduce((sum, cat) => sum + cat.dataPoints, 0);
 
   // Handle answer selection
@@ -308,20 +568,55 @@ export default function PsychometricsPage() {
     setActivePhase("questionnaire");
   };
 
-  // Complete current category
-  const completeCategory = () => {
-    if (selectedCategory) {
+  // Complete current category and save to Supabase
+  const completeCategory = async () => {
+    if (!selectedCategory || !userId) return;
+
+    setIsSaving(true);
+
+    const supabase = createClient();
+    const dbField = categoryToDbField[selectedCategory.id];
+
+    if (dbField) {
+      // Update the specific category field in the database
+      const updateData: Record<string, unknown> = {
+        [dbField]: answers,
+        updated_at: new Date().toISOString(),
+      };
+
+      // Calculate new completion percentage
+      const newCategories = {
+        ...userProfile.categories,
+        [selectedCategory.id]: {
+          completed: true,
+          answers,
+        },
+      };
+      const completedCount = Object.values(newCategories).filter((c) => c.completed).length;
+      const completionPct = Math.round((completedCount / assessmentCategories.length) * 100);
+      updateData.completion_percentage = completionPct;
+
+      const { error } = await supabase
+        .from("user_psychometric_profiles")
+        .update(updateData)
+        .eq("user_id", userId);
+
+      if (error) {
+        console.error("Error saving answers:", error);
+        alert("Failed to save your answers. Please try again.");
+        setIsSaving(false);
+        return;
+      }
+
+      // Update local state
       setUserProfile((prev) => ({
         ...prev,
-        categories: {
-          ...prev.categories,
-          [selectedCategory.id]: {
-            completed: true,
-            answers,
-          },
-        },
+        completionPercentage: completionPct,
+        categories: newCategories,
       }));
     }
+
+    setIsSaving(false);
     setSelectedCategory(null);
     setActivePhase("overview");
     setAnswers({});
@@ -330,6 +625,20 @@ export default function PsychometricsPage() {
   // Calculate completion percentage
   const completedCategories = Object.values(userProfile.categories).filter((c) => c.completed).length;
   const completionPercentage = Math.round((completedCategories / assessmentCategories.length) * 100);
+
+  // Show loading state
+  if (isLoading) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 py-8">
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center">
+            <span className="loading loading-spinner loading-lg text-primary"></span>
+            <p className="mt-4 text-base-content/60">Loading your profile...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
@@ -436,8 +745,16 @@ export default function PsychometricsPage() {
               <button
                 onClick={completeCategory}
                 className="btn btn-primary"
+                disabled={isSaving}
               >
-                Complete
+                {isSaving ? (
+                  <>
+                    <span className="loading loading-spinner loading-sm"></span>
+                    Saving...
+                  </>
+                ) : (
+                  "Complete & Save"
+                )}
               </button>
             )}
           </div>
@@ -467,18 +784,22 @@ export default function PsychometricsPage() {
                   </div>
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-4 text-center">
-                <div className="bg-base-100 rounded-xl p-4">
+              <div className="grid grid-cols-4 gap-3 text-center">
+                <div className="bg-base-100 rounded-xl p-3">
                   <div className="text-2xl font-bold text-primary">{totalDataPoints}</div>
-                  <div className="text-xs text-base-content/60">Total Data Points</div>
+                  <div className="text-xs text-base-content/60">Total Points</div>
                 </div>
-                <div className="bg-base-100 rounded-xl p-4">
+                <div className="bg-base-100 rounded-xl p-3">
                   <div className="text-2xl font-bold text-secondary">{questionnaireDataPoints}</div>
                   <div className="text-xs text-base-content/60">Questionnaire</div>
                 </div>
-                <div className="bg-base-100 rounded-xl p-4">
+                <div className="bg-base-100 rounded-xl p-3">
                   <div className="text-2xl font-bold text-accent">{conversationDataPoints}</div>
                   <div className="text-xs text-base-content/60">Conversation</div>
+                </div>
+                <div className="bg-base-100 rounded-xl p-3">
+                  <div className="text-2xl font-bold text-info">{automatedDataPoints}</div>
+                  <div className="text-xs text-base-content/60">Automated</div>
                 </div>
               </div>
             </div>
