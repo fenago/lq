@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { Suspense, useState, useEffect } from "react";
 import { createClient } from "@/libs/supabase";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import config from "@/config";
 
-export default function SignInPage() {
+function SignInForm() {
   const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -242,5 +242,40 @@ export default function SignInPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+function SignInLoading() {
+  return (
+    <div className="min-h-screen bg-base-200 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-md w-full space-y-8">
+        <div className="text-center">
+          <div className="flex items-center justify-center gap-2 mb-6">
+            <svg className="w-10 h-10 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+            </svg>
+            <span className="font-bold text-2xl">{config.appName}</span>
+          </div>
+          <div className="skeleton h-8 w-48 mx-auto mb-2"></div>
+          <div className="skeleton h-4 w-64 mx-auto"></div>
+        </div>
+        <div className="bg-base-100 rounded-lg shadow-lg p-8">
+          <div className="skeleton h-12 w-full mb-6"></div>
+          <div className="space-y-4">
+            <div className="skeleton h-12 w-full"></div>
+            <div className="skeleton h-12 w-full"></div>
+            <div className="skeleton h-12 w-full"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function SignInPage() {
+  return (
+    <Suspense fallback={<SignInLoading />}>
+      <SignInForm />
+    </Suspense>
   );
 }

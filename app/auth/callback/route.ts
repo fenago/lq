@@ -43,14 +43,18 @@ export async function GET(request: Request) {
 
   // Handle magic link / email OTP callback (token_hash)
   if (token_hash && type) {
-    const { error } = await supabase.auth.verifyOtp({
-      token_hash,
-      type: type as 'email' | 'sms' | 'magiclink' | 'recovery' | 'invite' | 'email_change' | 'phone_change',
-    });
-    if (!error) {
-      return NextResponse.redirect(`${origin}${next}`);
+    // EmailOtpType only supports: 'signup' | 'invite' | 'magiclink' | 'recovery' | 'email_change' | 'email'
+    const emailOtpTypes = ['signup', 'invite', 'magiclink', 'recovery', 'email_change', 'email'];
+    if (emailOtpTypes.includes(type)) {
+      const { error } = await supabase.auth.verifyOtp({
+        token_hash,
+        type: type as 'signup' | 'invite' | 'magiclink' | 'recovery' | 'email_change' | 'email',
+      });
+      if (!error) {
+        return NextResponse.redirect(`${origin}${next}`);
+      }
+      console.error('OTP verification error:', error);
     }
-    console.error('OTP verification error:', error);
   }
 
   // If neither code nor token_hash, redirect to sign-in with error

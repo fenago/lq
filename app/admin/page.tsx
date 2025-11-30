@@ -144,14 +144,17 @@ export default async function AdminDashboardPage() {
           <div className="p-6">
             {recentPurchases && recentPurchases.length > 0 ? (
               <div className="space-y-4">
-                {recentPurchases.map((purchase) => (
+                {recentPurchases.map((purchase) => {
+                  const book = purchase.books as unknown as { title: string } | null;
+                  const user = purchase.users as unknown as { email: string; full_name?: string } | null;
+                  return (
                   <div key={purchase.id} className="flex items-center justify-between">
                     <div>
                       <p className="font-medium">
-                        {(purchase.books as { title: string })?.title || "Unknown Book"}
+                        {book?.title || "Unknown Book"}
                       </p>
                       <p className="text-sm text-base-content/60">
-                        {(purchase.users as { email: string })?.email || "Unknown User"}
+                        {user?.email || "Unknown User"}
                       </p>
                     </div>
                     <div className="text-right">
@@ -166,7 +169,8 @@ export default async function AdminDashboardPage() {
                       </span>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <p className="text-base-content/60 text-center py-8">No purchases yet</p>
